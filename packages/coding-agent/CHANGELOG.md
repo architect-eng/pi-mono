@@ -2,13 +2,31 @@
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-02-19
+
+### Added
+
+- Added default skill auto-discovery for `.agents/skills` locations. Pi now discovers project skills from `.agents/skills` in `cwd` and ancestor directories (up to git repo root, or filesystem root when not in a repo), and global skills from `~/.agents/skills`, in addition to existing `.pi` skill paths.
+
+## [0.53.1] - 2026-02-19
+
+### Changed
+
+- Added Gemini 3.1 model catalog entries for all built-in providers that currently expose it: `google`, `google-vertex`, `opencode`, `openrouter`, and `vercel-ai-gateway`.
+- Added Claude Opus 4.6 Thinking to the `google-antigravity` model catalog.
+
+## [0.53.0] - 2026-02-17
+
 ### Breaking Changes
 
 - `SettingsManager` persistence semantics changed for SDK consumers. Setters now update in-memory state immediately and queue disk writes. Code that requires durable on-disk settings must call `await settingsManager.flush()`.
+- `AuthStorage` constructor is no longer public. Use static factories (`AuthStorage.create(...)`, `AuthStorage.fromStorage(...)`, `AuthStorage.inMemory(...)`). This breaks code that used `new AuthStorage(...)` directly.
 
 ### Added
 
 - Added `SettingsManager.drainErrors()` for caller-controlled settings I/O error handling without manager-side console output.
+- Added auth storage backends (`FileAuthStorageBackend`, `InMemoryAuthStorageBackend`) and `AuthStorage.fromStorage(...)` for storage-first auth persistence wiring.
+- Added Anthropic `claude-sonnet-4-6` model fallback entry to generated model definitions.
 
 ### Changed
 
@@ -17,6 +35,8 @@
 ### Fixed
 
 - Fixed project settings persistence to preserve unrelated external edits via merge-on-write, while still applying in-memory changes for modified keys.
+- Fixed auth credential persistence to preserve unrelated external edits to `auth.json` via locked read/merge/write updates.
+- Fixed auth load/persist error surfacing by buffering errors and exposing them via `AuthStorage.drainErrors()`.
 
 ## [0.52.12] - 2026-02-13
 
