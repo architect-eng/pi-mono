@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.54.2] - 2026-02-23
+
+### Fixed
+
+- Fixed `.pi` folder being created unnecessarily when only reading settings. The folder is now only created when writing project-specific settings.
+- Fixed extension-driven runtime theme changes to persist in settings so `/settings` reflects the active `currentTheme` after `ctx.ui.setTheme(...)` ([#1483](https://github.com/badlogic/pi-mono/pull/1483) by [@ferologics](https://github.com/ferologics))
+- Fixed interactive mode freezes during large streaming `write` tool calls by using incremental syntax highlighting while partial arguments stream, with a final full re-highlight after tool-call arguments complete.
+
+## [0.54.1] - 2026-02-22
+
+### Fixed
+
+- Externalized koffi from bun binary builds, reducing archive sizes by ~15MB per platform (e.g. darwin-arm64: 43MB -> 28MB). Koffi's Windows-only `.node` file is now shipped alongside the Windows binary only.
+
 ## [0.54.0] - 2026-02-19
 
 ### Added
