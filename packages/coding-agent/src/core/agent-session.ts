@@ -1841,31 +1841,38 @@ export class AgentSession {
 			return await this._runAutoCompaction("overflow", true);
 		}
 
-		// Case 2: Threshold - context is getting large
+		// Case 2: Threshold - context is getting large.
 		// For error messages (no usage data), estimate from last successful response.
-		// This ensures sessions that hit persistent API errors (e.g. 529) can still compact.
-		let contextTokens: number;
-		if (assistantMessage.stopReason === "error") {
-			const messages = this.agent.state.messages;
-			const estimate = estimateContextTokens(messages);
-			if (estimate.lastUsageIndex === null) return false; // No usage data at all
+		// For successful messages, also include messages appended after the LLM call
+		// (for example large tool results) so graceful mid-turn stops can compact.
+		const messages = this.agent.state.messages;
+		const estimate = estimateContextTokens(messages);
+		let estimatedContextTokens: number | undefined;
+		if (estimate.lastUsageIndex !== null) {
 			// Verify the usage source is post-compaction. Kept pre-compaction messages
 			// have stale usage reflecting the old (larger) context and would falsely
 			// trigger compaction right after one just finished.
 			const usageMsg = messages[estimate.lastUsageIndex];
-			if (
+			const usageIsFromBeforeCompaction =
 				compactionEntry &&
 				usageMsg.role === "assistant" &&
-				(usageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
-			) {
-				return false;
+				(usageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime();
+			if (!usageIsFromBeforeCompaction) {
+				estimatedContextTokens = estimate.tokens;
 			}
-			contextTokens = estimate.tokens;
+		}
+
+		let contextTokens: number;
+		if (assistantMessage.stopReason === "error") {
+			if (estimatedContextTokens === undefined) return false; // No usable usage data at all
+			contextTokens = estimatedContextTokens;
 		} else {
-			contextTokens = calculateContextTokens(assistantMessage.usage);
+			contextTokens = Math.max(calculateContextTokens(assistantMessage.usage), estimatedContextTokens ?? 0);
 		}
 		if (shouldCompact(contextTokens, contextWindow, settings)) {
-			return await this._runAutoCompaction("threshold", false);
+			const lastMessage = this.agent.state.messages[this.agent.state.messages.length - 1];
+			const shouldResumeToolLoop = assistantMessage.stopReason !== "error" && lastMessage?.role !== "assistant";
+			return await this._runAutoCompaction("threshold", shouldResumeToolLoop);
 		}
 		return false;
 	}

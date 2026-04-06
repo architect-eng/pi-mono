@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed context growing unbounded during long tool loops when `contextWindow` is set lower than the provider's actual limit. The agent now uses `shouldStopAfterTurn` to stop cleanly after a tool turn crosses the compaction threshold, compacts, and resumes the tool loop ([#5512](https://github.com/earendil-works/pi/issues/5512)).
+
 ## [0.79.0] - 2026-06-08
 
 ### New Features

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Exposed `shouldStopAfterTurn` on `AgentOptions` and `Agent`, allowing callers to gracefully stop after a completed turn before polling queued messages or starting another LLM call ([#5512](https://github.com/earendil-works/pi/issues/5512)).
+
 ## [0.79.0] - 2026-06-08
 
 ### Fixed
