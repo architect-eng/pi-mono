@@ -7,6 +7,7 @@
  */
 process.title = "pi";
 process.emitWarning = (() => {}) as typeof process.emitWarning;
+process.env.PI_CODING_AGENT = "true";
 
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { main } from "./main.js";
