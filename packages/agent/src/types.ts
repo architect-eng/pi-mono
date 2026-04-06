@@ -183,6 +183,30 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	getFollowUpMessages?: () => Promise<AgentMessage[]>;
 
 	/**
+	 * Called before each LLM request within the agent loop, after transformContext.
+	 *
+	 * If it returns a non-empty error string, the agent loop synthesizes an
+	 * error AssistantMessage with that string and exits (the tool loop stops
+	 * and `agent_end` fires with `stopReason: "error"`).
+	 *
+	 * Use this for pre-call validation like context window enforcement.
+	 *
+	 * Contract: must not throw or reject. Return undefined to proceed normally.
+	 *
+	 * @example
+	 * ```typescript
+	 * beforeLlmCall: (messages) => {
+	 *   const tokens = estimateTokens(messages);
+	 *   if (tokens > contextWindow) {
+	 *     return `prompt is too long: ${tokens} tokens > ${contextWindow} maximum`;
+	 *   }
+	 *   return undefined;
+	 * }
+	 * ```
+	 */
+	beforeLlmCall?: (messages: AgentMessage[]) => Promise<string | undefined> | string | undefined;
+
+	/**
 	 * Tool execution mode.
 	 * - "sequential": execute tool calls one by one
 	 * - "parallel": preflight tool calls sequentially, then execute allowed tools concurrently

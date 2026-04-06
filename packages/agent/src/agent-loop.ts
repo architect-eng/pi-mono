@@ -248,6 +248,35 @@ async function streamAssistantResponse(
 		messages = await config.transformContext(messages, signal);
 	}
 
+	// Check beforeLlmCall hook (e.g., context window enforcement)
+	if (config.beforeLlmCall) {
+		const errorMessage = await config.beforeLlmCall(messages);
+		if (errorMessage) {
+			const syntheticError: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "text", text: "" }],
+				api: config.model.api,
+				provider: config.model.provider,
+				model: config.model.id,
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "error",
+				errorMessage,
+				timestamp: Date.now(),
+			};
+			context.messages.push(syntheticError);
+			await emit({ type: "message_start", message: { ...syntheticError } });
+			await emit({ type: "message_end", message: syntheticError });
+			return syntheticError;
+		}
+	}
+
 	// Convert to LLM-compatible messages (AgentMessage[] → Message[])
 	const llmMessages = await config.convertToLlm(messages);
 

@@ -7,14 +7,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
 import { Agent } from "@mariozechner/pi-agent-core";
-import type { FauxModelDefinition, FauxProviderRegistration, FauxResponseStep, Model } from "@mariozechner/pi-ai";
+import type {
+	AssistantMessage,
+	FauxModelDefinition,
+	FauxProviderRegistration,
+	FauxResponseStep,
+	Model,
+} from "@mariozechner/pi-ai";
 import { registerFauxProvider } from "@mariozechner/pi-ai";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.js";
 import { AuthStorage } from "../../src/core/auth-storage.js";
+import { estimateContextTokens, shouldCompact } from "../../src/core/compaction/index.js";
 import type { ExtensionRunner } from "../../src/core/extensions/index.js";
 import { convertToLlm } from "../../src/core/messages.js";
 import { ModelRegistry } from "../../src/core/model-registry.js";
-import { SessionManager } from "../../src/core/session-manager.js";
+import { getLatestCompactionEntry, SessionManager } from "../../src/core/session-manager.js";
 import type { Settings } from "../../src/core/settings-manager.js";
 import { SettingsManager } from "../../src/core/settings-manager.js";
 import type { ExtensionFactory, ResourceLoader } from "../../src/index.js";
@@ -148,6 +155,36 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			return runner.emitContext(messages);
 		},
 	});
+
+	// Context window enforcement (mirrors sdk.ts)
+	agent.beforeLlmCall = (messages: AgentMessage[]) => {
+		const compactionSettings = settingsManager.getCompactionSettings();
+		if (!compactionSettings.enabled) return undefined;
+		const currentModel = agent.state.model;
+		const contextWindow = currentModel?.contextWindow ?? 0;
+		if (contextWindow === 0) return undefined;
+
+		const estimate = estimateContextTokens(messages);
+		if (estimate.lastUsageIndex === null) return undefined;
+
+		const compactionEntry = getLatestCompactionEntry(sessionManager.getBranch());
+		if (compactionEntry && estimate.lastUsageIndex !== null) {
+			const lastUsageMsg = messages[estimate.lastUsageIndex];
+			if (
+				lastUsageMsg.role === "assistant" &&
+				"timestamp" in lastUsageMsg &&
+				(lastUsageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
+			) {
+				return undefined;
+			}
+		}
+
+		if (shouldCompact(estimate.tokens, contextWindow, compactionSettings)) {
+			return `prompt is too long: estimated ${estimate.tokens} tokens > ${contextWindow} maximum`;
+		}
+		return undefined;
+	};
+
 	const extensionsResult = options.extensionFactories
 		? await createTestExtensionsResult(options.extensionFactories, tempDir)
 		: undefined;

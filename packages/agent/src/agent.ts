@@ -98,6 +98,7 @@ export interface AgentOptions {
 	streamFn?: StreamFn;
 	getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	onPayload?: SimpleStreamOptions["onPayload"];
+	beforeLlmCall?: (messages: AgentMessage[]) => Promise<string | undefined> | string | undefined;
 	beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
 	steeringMode?: QueueMode;
@@ -165,6 +166,7 @@ export class Agent {
 	public streamFn: StreamFn;
 	public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	public onPayload?: SimpleStreamOptions["onPayload"];
+	public beforeLlmCall?: (messages: AgentMessage[]) => Promise<string | undefined> | string | undefined;
 	public beforeToolCall?: (
 		context: BeforeToolCallContext,
 		signal?: AbortSignal,
@@ -192,6 +194,7 @@ export class Agent {
 		this.streamFn = options.streamFn ?? streamSimple;
 		this.getApiKey = options.getApiKey;
 		this.onPayload = options.onPayload;
+		this.beforeLlmCall = options.beforeLlmCall;
 		this.beforeToolCall = options.beforeToolCall;
 		this.afterToolCall = options.afterToolCall;
 		this.steeringQueue = new PendingMessageQueue(options.steeringMode ?? "one-at-a-time");
@@ -415,6 +418,7 @@ export class Agent {
 			thinkingBudgets: this.thinkingBudgets,
 			maxRetryDelayMs: this.maxRetryDelayMs,
 			toolExecution: this.toolExecution,
+			beforeLlmCall: this.beforeLlmCall,
 			beforeToolCall: this.beforeToolCall,
 			afterToolCall: this.afterToolCall,
 			convertToLlm: this.convertToLlm,

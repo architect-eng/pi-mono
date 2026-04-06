@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed context growing unbounded during long tool loops when `contextWindow` is set lower than the provider's actual limit. A `beforeLlmCall` hook now checks estimated context size before each LLM call within the agent loop. When context exceeds the compaction threshold, the call is aborted with a synthetic overflow error, triggering compaction and retry. Previously, compaction was only checked at turn boundaries (`agent_end`) and before the next user prompt. ([#2871](https://github.com/badlogic/pi-mono/issues/2871))
+
 ## [0.65.2] - 2026-04-06
 
 ## [0.65.1] - 2026-04-05
