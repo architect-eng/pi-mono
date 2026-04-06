@@ -99,6 +99,7 @@ export interface AgentOptions {
 	getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	onPayload?: SimpleStreamOptions["onPayload"];
 	onResponse?: SimpleStreamOptions["onResponse"];
+	beforeLlmCall?: (messages: AgentMessage[]) => Promise<string | undefined> | string | undefined;
 	beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
 	steeringMode?: QueueMode;
@@ -167,6 +168,7 @@ export class Agent {
 	public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	public onPayload?: SimpleStreamOptions["onPayload"];
 	public onResponse?: SimpleStreamOptions["onResponse"];
+	public beforeLlmCall?: (messages: AgentMessage[]) => Promise<string | undefined> | string | undefined;
 	public beforeToolCall?: (
 		context: BeforeToolCallContext,
 		signal?: AbortSignal,
@@ -195,6 +197,7 @@ export class Agent {
 		this.getApiKey = options.getApiKey;
 		this.onPayload = options.onPayload;
 		this.onResponse = options.onResponse;
+		this.beforeLlmCall = options.beforeLlmCall;
 		this.beforeToolCall = options.beforeToolCall;
 		this.afterToolCall = options.afterToolCall;
 		this.steeringQueue = new PendingMessageQueue(options.steeringMode ?? "one-at-a-time");
@@ -419,6 +422,7 @@ export class Agent {
 			thinkingBudgets: this.thinkingBudgets,
 			maxRetryDelayMs: this.maxRetryDelayMs,
 			toolExecution: this.toolExecution,
+			beforeLlmCall: this.beforeLlmCall,
 			beforeToolCall: this.beforeToolCall,
 			afterToolCall: this.afterToolCall,
 			convertToLlm: this.convertToLlm,

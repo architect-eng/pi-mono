@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `beforeLlmCall` hook to `AgentLoopConfig`, `AgentOptions`, and `Agent`. Called before each LLM request within the agent loop after `transformContext`. If it returns a non-empty error string, the loop synthesizes an error `AssistantMessage` and exits. Use this for pre-call validation such as context window enforcement ([#2871](https://github.com/badlogic/pi-mono/issues/2871))
+
 ## [0.70.2] - 2026-04-24
 
 ## [0.70.1] - 2026-04-24

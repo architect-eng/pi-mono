@@ -12,6 +12,7 @@
 - Fixed `/tree` cancellation via `session_before_tree` leaving the session stuck in compaction state ([#3688](https://github.com/badlogic/pi-mono/issues/3688))
 - Fixed Escape interrupt handling when extensions hide the built-in working loader row ([#3674](https://github.com/badlogic/pi-mono/issues/3674))
 - Fixed coding-agent test expectations for current default models and missing-auth guidance.
+- Fixed context growing unbounded during long tool loops when `contextWindow` is set lower than the provider's actual limit. A `beforeLlmCall` hook now checks estimated context size before each LLM call within the agent loop. When context exceeds the compaction threshold, the call is aborted with a synthetic overflow error, triggering compaction and retry. Previously, compaction was only checked at turn boundaries (`agent_end`) and before the next user prompt ([#2871](https://github.com/badlogic/pi-mono/issues/2871))
 
 ## [0.70.2] - 2026-04-24
 
@@ -298,6 +299,7 @@
 - Fixed `ctrl+z` on native Windows to avoid crashing interactive mode, disable the default suspend binding there, and show a status message when suspend is invoked manually ([#3191](https://github.com/badlogic/pi-mono/issues/3191))
 - Fixed `find` tool cancellation and responsiveness on broad searches by making `.gitignore` discovery and `fd` execution fully abort-aware and non-blocking ([#3148](https://github.com/badlogic/pi-mono/issues/3148))
 - Fixed `grep` broad-search stalls when `context=0` by formatting match lines from ripgrep JSON output instead of doing synchronous per-match file reads ([#3205](https://github.com/badlogic/pi-mono/issues/3205))
+- Fixed context growing unbounded during long tool loops when `contextWindow` is set lower than the provider's actual limit. A `beforeLlmCall` hook now checks estimated context size before each LLM call within the agent loop. When context exceeds the compaction threshold, the call is aborted with a synthetic overflow error, triggering compaction and retry. Previously, compaction was only checked at turn boundaries (`agent_end`) and before the next user prompt. ([#2871](https://github.com/badlogic/pi-mono/issues/2871))
 
 ## [0.67.3] - 2026-04-15
 

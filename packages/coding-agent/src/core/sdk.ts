@@ -1,10 +1,11 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, type ThinkingLevel } from "@mariozechner/pi-agent-core";
-import { type Message, type Model, streamSimple } from "@mariozechner/pi-ai";
+import { type AssistantMessage, type Message, type Model, streamSimple } from "@mariozechner/pi-ai";
 import { getAgentDir } from "../config.js";
 import { AgentSession } from "./agent-session.js";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.js";
 import { AuthStorage } from "./auth-storage.js";
+import { estimateContextTokens, shouldCompact } from "./compaction/index.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.js";
 import { convertToLlm } from "./messages.js";
@@ -12,7 +13,7 @@ import { ModelRegistry } from "./model-registry.js";
 import { findInitialModel } from "./model-resolver.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import { DefaultResourceLoader } from "./resource-loader.js";
-import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
+import { getDefaultSessionDir, getLatestCompactionEntry, SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
 import { isInstallTelemetryEnabled } from "./telemetry.js";
 import { time } from "./timings.js";
@@ -359,6 +360,42 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
 	});
+
+	// Context window enforcement: prevent sending requests that exceed the model's context window
+	// during tool loops. Without this, context can grow unbounded between compaction checks
+	// (which only run at agent_end and before the next user prompt).
+	agent.beforeLlmCall = (messages) => {
+		const compactionSettings = settingsManager.getCompactionSettings();
+		if (!compactionSettings.enabled) return undefined;
+		const currentModel = agent.state.model;
+		const contextWindow = currentModel?.contextWindow ?? 0;
+		if (contextWindow === 0) return undefined;
+
+		const estimate = estimateContextTokens(messages);
+
+		// Skip if no valid usage data (first call, no prior assistant response)
+		if (estimate.lastUsageIndex === null) return undefined;
+
+		// Skip if the last usage comes from a pre-compaction kept message.
+		// Kept messages retain their original (large) usage from before compaction,
+		// which would falsely trigger the check right after compaction.
+		const compactionEntry = getLatestCompactionEntry(sessionManager.getBranch());
+		if (compactionEntry && estimate.lastUsageIndex !== null) {
+			const lastUsageMsg = messages[estimate.lastUsageIndex];
+			if (
+				lastUsageMsg.role === "assistant" &&
+				"timestamp" in lastUsageMsg &&
+				(lastUsageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
+			) {
+				return undefined;
+			}
+		}
+
+		if (shouldCompact(estimate.tokens, contextWindow, compactionSettings)) {
+			return `prompt is too long: estimated ${estimate.tokens} tokens > ${contextWindow} maximum`;
+		}
+		return undefined;
+	};
 
 	// Restore messages if session has existing data
 	if (hasExistingSession) {
