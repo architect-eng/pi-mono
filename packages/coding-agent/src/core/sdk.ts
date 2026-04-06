@@ -1,10 +1,18 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { clampThinkingLevel, type Message, type Model, streamSimple } from "@earendil-works/pi-ai/compat";
+import {
+	type AssistantMessage,
+	clampThinkingLevel,
+	type Message,
+	type Model,
+	streamSimple,
+} from "@earendil-works/pi-ai/compat";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
+import { AuthStorage } from "./auth-storage.ts";
+import { estimateContextTokens, shouldCompact } from "./compaction/index.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { convertToLlm } from "./messages.ts";
@@ -13,7 +21,7 @@ import { ModelRuntime } from "./model-runtime.ts";
 import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
-import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
+import { getDefaultSessionDir, getLatestCompactionEntry, SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { time } from "./timings.ts";
 import {
@@ -358,6 +366,43 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
 	});
+
+	const shouldCompactMessages = (messages: AgentMessage[]): boolean => {
+		const compactionSettings = settingsManager.getCompactionSettings();
+		if (!compactionSettings.enabled) return false;
+		const currentModel = agent.state.model;
+		const contextWindow = currentModel?.contextWindow ?? 0;
+		if (contextWindow === 0) return false;
+
+		const estimate = estimateContextTokens(messages);
+
+		// Skip if no valid usage data (first call, no prior assistant response)
+		if (estimate.lastUsageIndex === null) return false;
+
+		// Skip if the last usage comes from a pre-compaction kept message.
+		// Kept messages retain their original (large) usage from before compaction,
+		// which would falsely trigger the check right after compaction.
+		const compactionEntry = getLatestCompactionEntry(sessionManager.getBranch());
+		if (compactionEntry && estimate.lastUsageIndex !== null) {
+			const lastUsageMsg = messages[estimate.lastUsageIndex];
+			if (
+				lastUsageMsg.role === "assistant" &&
+				"timestamp" in lastUsageMsg &&
+				(lastUsageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
+			) {
+				return false;
+			}
+		}
+
+		return shouldCompact(estimate.tokens, contextWindow, compactionSettings);
+	};
+
+	// Gracefully stop after each completed tool turn. AgentSession's agent_end
+	// compaction check includes appended tool results, then resumes via agent.continue().
+	agent.shouldStopAfterTurn = ({ message, context }) => {
+		if (message.stopReason === "error" || message.stopReason === "aborted") return false;
+		return shouldCompactMessages(context.messages);
+	};
 
 	// Restore messages if session has existing data
 	if (hasExistingSession) {

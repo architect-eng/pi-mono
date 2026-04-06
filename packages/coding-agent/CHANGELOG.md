@@ -311,6 +311,7 @@
 - Fixed inherited Amazon Bedrock Claude 5 prompt-cache pricing metadata by removing stale fallback overrides.
 - Fixed inherited OpenAI Codex user-agent construction to synchronously load Node OS metadata, avoiding a startup race that could report `pi (browser)` in Node/Bun.
 - Fixed `pi update` for pnpm installations to suggest pruning pnpm's self-update cache when the executable points at a removed cached version ([#6279](https://github.com/earendil-works/pi/pull/6279) by [@rajp152k](https://github.com/rajp152k)).
+- Fixed context growing unbounded during long tool loops when `contextWindow` is set lower than the provider's actual limit. The agent now uses `shouldStopAfterTurn` to stop cleanly after a tool turn crosses the compaction threshold, compacts, and resumes the tool loop ([#5512](https://github.com/earendil-works/pi/issues/5512)).
 - Fixed Xiaomi Token Plan model metadata to follow the upstream models.dev token-plan catalogs, removing unsupported `mimo-v2-omni` variants ([#6204](https://github.com/earendil-works/pi/issues/6204)).
 - Fixed startup model selection to skip unauthenticated saved defaults so configured local custom models can be selected instead ([#6231](https://github.com/earendil-works/pi/issues/6231)).
 - Fixed the question extension example to run question tool calls sequentially so multiple questions in one assistant turn remain answerable ([#6189](https://github.com/earendil-works/pi/issues/6189)).
@@ -519,6 +520,7 @@
 
 ### Fixed
 
+- Fixed context growing unbounded during long tool loops when `contextWindow` is set lower than the provider's actual limit. The agent now uses `shouldStopAfterTurn` to stop cleanly after a tool turn crosses the compaction threshold, compacts, and resumes the tool loop ([#5512](https://github.com/earendil-works/pi/issues/5512)).
 - Fixed RPC unknown-command errors to include the request id so clients do not hang waiting for a response ([#5868](https://github.com/earendil-works/pi/issues/5868)).
 - Fixed `/model` autocomplete and model selection searches to match provider/model queries regardless of whether the provider or model token is typed first.
 - Fixed the tree navigator to horizontally pan deep entries so the selected item remains readable ([#5830](https://github.com/earendil-works/pi/issues/5830)).

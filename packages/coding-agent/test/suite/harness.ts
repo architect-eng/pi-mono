@@ -9,6 +9,7 @@ import { join } from "node:path";
 import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type {
+	AssistantMessage,
 	FauxModelDefinition,
 	FauxProviderRegistration,
 	FauxResponseStep,
@@ -17,9 +18,11 @@ import type {
 import { registerFauxProvider, streamSimple } from "@earendil-works/pi-ai/compat";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
+import { estimateContextTokens, shouldCompact } from "../../src/core/compaction/index.ts";
 import type { ExtensionRunner } from "../../src/core/extensions/index.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
-import { SessionManager } from "../../src/core/session-manager.ts";
+import { ModelRegistry } from "../../src/core/model-registry.ts";
+import { getLatestCompactionEntry, SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import type { InlineExtension, ResourceLoader } from "../../src/index.ts";
@@ -173,6 +176,38 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			return runner.emitContext(messages);
 		},
 	});
+
+	// Context window enforcement (mirrors sdk.ts)
+	const shouldCompactMessages = (messages: AgentMessage[]): boolean => {
+		const compactionSettings = settingsManager.getCompactionSettings();
+		if (!compactionSettings.enabled) return false;
+		const currentModel = agent.state.model;
+		const contextWindow = currentModel?.contextWindow ?? 0;
+		if (contextWindow === 0) return false;
+
+		const estimate = estimateContextTokens(messages);
+		if (estimate.lastUsageIndex === null) return false;
+
+		const compactionEntry = getLatestCompactionEntry(sessionManager.getBranch());
+		if (compactionEntry && estimate.lastUsageIndex !== null) {
+			const lastUsageMsg = messages[estimate.lastUsageIndex];
+			if (
+				lastUsageMsg.role === "assistant" &&
+				"timestamp" in lastUsageMsg &&
+				(lastUsageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
+			) {
+				return false;
+			}
+		}
+
+		return shouldCompact(estimate.tokens, contextWindow, compactionSettings);
+	};
+
+	agent.shouldStopAfterTurn = ({ message, context }) => {
+		if (message.stopReason === "error" || message.stopReason === "aborted") return false;
+		return shouldCompactMessages(context.messages);
+	};
+
 	const extensionsResult = options.extensionFactories
 		? await createTestExtensionsResult(options.extensionFactories, tempDir)
 		: undefined;
