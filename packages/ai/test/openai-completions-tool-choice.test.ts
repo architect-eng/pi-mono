@@ -1257,6 +1257,7 @@ describe("openai-completions tool_choice", () => {
 				vercelGatewayRouting: {},
 				chatTemplateKwargs: {},
 				zaiToolStream: false,
+				disableToolStreaming: false,
 				supportsStrictMode: true,
 				supportsOpenAIGrammarTools: false,
 				sendSessionAffinityHeaders: false,

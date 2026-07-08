@@ -526,6 +526,7 @@ const OPENAI_COMPLETIONS_DEFAULT_COMPAT = {
 	vercelGatewayRouting: {},
 	chatTemplateKwargs: {},
 	zaiToolStream: false,
+	disableToolStreaming: false,
 	supportsStrictMode: true,
 	supportsOpenAIGrammarTools: false,
 	sendSessionAffinityHeaders: false,
@@ -586,6 +587,7 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 	const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
 	const isOpenRouterDeveloperRoleModel =
 		isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
+	const disablesToolStreaming = /glm-?5\.2/i.test(model.id);
 	const cacheControlFormat =
 		provider === "openrouter" && /^~?anthropic\//.test(model.id) ? "anthropic" : undefined;
 
@@ -615,6 +617,7 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 		vercelGatewayRouting: {},
 		chatTemplateKwargs: {},
 		zaiToolStream: false,
+		disableToolStreaming: disablesToolStreaming,
 		supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
 		supportsOpenAIGrammarTools: false,
 		...(cacheControlFormat ? { cacheControlFormat } : {}),

@@ -6,6 +6,10 @@
 
 - Added Claude Opus 5 support for the GitHub Copilot provider, routing through the Anthropic Messages API with adaptive thinking, 1M context, and the Copilot `minimal` thinking-level override.
 
+### Fixed
+
+- Fixed GLM-5.2 OpenAI-compatible tool calls by using non-streaming chat completions for tool requests, including custom provider model ids containing `glm5.2` or `glm-5.2` in any case.
+
 ## [0.82.1] - 2026-07-25
 
 ### Added

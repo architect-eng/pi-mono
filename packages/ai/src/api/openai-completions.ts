@@ -1,10 +1,12 @@
 import OpenAI from "openai";
 import type {
+	ChatCompletion,
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionChunk,
 	ChatCompletionContentPart,
 	ChatCompletionContentPartImage,
 	ChatCompletionContentPartText,
+	ChatCompletionCreateParamsNonStreaming,
 	ChatCompletionDeveloperMessageParam,
 	ChatCompletionMessageParam,
 	ChatCompletionMessageToolCall,
@@ -183,6 +185,72 @@ type ChatCompletionToolWithCacheControl = OpenAI.Chat.Completions.ChatCompletion
 	cache_control?: OpenAICompatCacheControl;
 };
 
+type ChatCompletionDeltaWithReasoning = ChatCompletionChunk.Choice.Delta & {
+	reasoning_content?: string;
+};
+
+function toNonStreamingParams(
+	params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+): ChatCompletionCreateParamsNonStreaming {
+	const { stream_options: _streamOptions, ...rest } = params;
+	return { ...rest, stream: false };
+}
+
+async function* completionToChunks(completion: ChatCompletion): AsyncIterable<ChatCompletionChunk> {
+	const choice = completion.choices[0];
+	const message = choice?.message;
+	const base = {
+		id: completion.id,
+		created: completion.created,
+		model: completion.model,
+		object: "chat.completion.chunk" as const,
+	};
+
+	const messageFields = message as unknown as Record<string, unknown> | undefined;
+	const reasoning = messageFields?.reasoning_content ?? messageFields?.reasoning ?? messageFields?.reasoning_text;
+	if (typeof reasoning === "string" && reasoning.length > 0) {
+		const delta: ChatCompletionDeltaWithReasoning = { reasoning_content: reasoning };
+		yield {
+			...base,
+			choices: [{ index: choice?.index ?? 0, delta, finish_reason: null }],
+		};
+	}
+
+	if (message?.content) {
+		yield {
+			...base,
+			choices: [{ index: choice?.index ?? 0, delta: { content: message.content }, finish_reason: null }],
+		};
+	}
+
+	const functionToolCalls = message?.tool_calls?.filter((toolCall) => toolCall.type === "function") ?? [];
+	if (functionToolCalls.length > 0) {
+		yield {
+			...base,
+			choices: [
+				{
+					index: choice?.index ?? 0,
+					delta: {
+						tool_calls: functionToolCalls.map((toolCall, index) => ({
+							index,
+							id: toolCall.id,
+							type: toolCall.type,
+							function: toolCall.function,
+						})),
+					},
+					finish_reason: null,
+				},
+			],
+		};
+	}
+
+	yield {
+		...base,
+		choices: [{ index: choice?.index ?? 0, delta: {}, finish_reason: choice?.finish_reason ?? "stop" }],
+		usage: completion.usage,
+	};
+}
+
 function resolveCacheRetention(cacheRetention?: CacheRetention, env?: ProviderEnv): CacheRetention {
 	if (cacheRetention) {
 		return cacheRetention;
@@ -239,14 +307,23 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
 			};
-			const { data: openaiStream, response } = await retryProviderRequest(
-				() => client.chat.completions.create(params, requestOptions).withResponse(),
+			const { data: resultData, response } = await retryProviderRequest(
+				() => {
+					if (compat.disableToolStreaming && context.tools && context.tools.length > 0) {
+						return client.chat.completions.create(toNonStreamingParams(params), requestOptions).withResponse();
+					}
+					return client.chat.completions.create(params, requestOptions).withResponse();
+				},
 				{
 					maxRetries: options?.maxRetries,
 					maxRetryDelayMs: options?.maxRetryDelayMs,
 					signal: options?.signal,
 				},
 			);
+			const openaiStream =
+				compat.disableToolStreaming && context.tools && context.tools.length > 0
+					? completionToChunks(resultData as ChatCompletion)
+					: (resultData as AsyncIterable<ChatCompletionChunk>);
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 
@@ -1423,6 +1500,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
 	const isOpenRouterDeveloperRoleModel =
 		isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
+	const disablesToolStreaming = /glm-?5\.2/i.test(model.id);
 	const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
 
 	return {
@@ -1451,6 +1529,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		vercelGatewayRouting: {},
 		chatTemplateKwargs: {},
 		zaiToolStream: false,
+		disableToolStreaming: disablesToolStreaming,
 		supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
 		supportsOpenAIGrammarTools: false,
 		cacheControlFormat,
@@ -1493,6 +1572,7 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 		vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
 		chatTemplateKwargs: model.compat.chatTemplateKwargs ?? detected.chatTemplateKwargs,
 		zaiToolStream: model.compat.zaiToolStream ?? detected.zaiToolStream,
+		disableToolStreaming: model.compat.disableToolStreaming ?? detected.disableToolStreaming,
 		supportsStrictMode: model.compat.supportsStrictMode ?? detected.supportsStrictMode,
 		supportsOpenAIGrammarTools: model.compat.supportsOpenAIGrammarTools ?? detected.supportsOpenAIGrammarTools,
 		cacheControlFormat: model.compat.cacheControlFormat ?? detected.cacheControlFormat,
