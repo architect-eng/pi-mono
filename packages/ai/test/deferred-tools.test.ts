@@ -368,6 +368,7 @@ describe("deferred tools", () => {
 			vercelGatewayRouting: {},
 			chatTemplateKwargs: {},
 			zaiToolStream: false,
+			disableToolStreaming: false,
 			supportsStrictMode: false,
 			supportsOpenAIGrammarTools: false,
 			cacheControlFormat: undefined,

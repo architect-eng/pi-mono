@@ -307,9 +307,14 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
 			};
-			const { data: resultData, response } = await retryProviderRequest(
-				() => {
-					if (compat.disableToolStreaming && context.tools && context.tools.length > 0) {
+			const useNonStreamingToolCall = compat.disableToolStreaming && context.tools && context.tools.length > 0;
+			const { data: resultData, response } = await retryProviderRequest<{
+				data: ChatCompletion | AsyncIterable<ChatCompletionChunk>;
+				response: Response;
+				request_id: string | null;
+			}>(
+				async () => {
+					if (useNonStreamingToolCall) {
 						return client.chat.completions.create(toNonStreamingParams(params), requestOptions).withResponse();
 					}
 					return client.chat.completions.create(params, requestOptions).withResponse();
@@ -320,10 +325,9 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 					signal: options?.signal,
 				},
 			);
-			const openaiStream =
-				compat.disableToolStreaming && context.tools && context.tools.length > 0
-					? completionToChunks(resultData as ChatCompletion)
-					: (resultData as AsyncIterable<ChatCompletionChunk>);
+			const openaiStream = useNonStreamingToolCall
+				? completionToChunks(resultData as ChatCompletion)
+				: (resultData as AsyncIterable<ChatCompletionChunk>);
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 

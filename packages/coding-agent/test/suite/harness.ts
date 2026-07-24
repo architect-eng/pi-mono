@@ -21,7 +21,6 @@ import { AuthStorage } from "../../src/core/auth-storage.ts";
 import { estimateContextTokens, shouldCompact } from "../../src/core/compaction/index.ts";
 import type { ExtensionRunner } from "../../src/core/extensions/index.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
-import { ModelRegistry } from "../../src/core/model-registry.ts";
 import { getLatestCompactionEntry, SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
